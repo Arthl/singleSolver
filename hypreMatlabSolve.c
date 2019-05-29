@@ -33,7 +33,7 @@ int main (int argc, char *argv[])
 
    int num_iterations;
    double final_res_norm;
-   int max_iter = 5000;
+   int max_iter = 10000;
 
     
    HYPRE_Int myid, num_procs, dummy;
@@ -383,17 +383,6 @@ int main (int argc, char *argv[])
 			(HYPRE_PtrToSolverFcn) HYPRE_EuclidSetup,
 			precond);
 
-      /* Set some parameters (See Reference Manual for more parameters) */
-      //HYPRE_ParaSailsSetParams(precond, sai_threshold, sai_max_levels);
-      //HYPRE_ParaSailsSetFilter(precond, sai_filter);
-      //HYPRE_ParaSailsSetSym(precond, sai_sym);
-      //HYPRE_ParaSailsSetLogging(precond, 3);
-
-      /* Set the PCG preconditioner */
-      //HYPRE_PCGSetPrecond(solver, (HYPRE_PtrToSolverFcn) HYPRE_ParaSailsSolve,
-      //                    (HYPRE_PtrToSolverFcn) HYPRE_ParaSailsSetup, precond);
-
-
       /* Now setup and solve! */
       HYPRE_ParCSRPCGSetup(solver, parcsr_A, par_b, par_x);
 
@@ -513,7 +502,7 @@ int main (int argc, char *argv[])
 	else if (solver_id == 57)
 	{
 		// ParaSails Precond
-		printf("ParaSail Preconditioner\n");
+		printf("ParaSails Preconditioner\n");
 		int      sai_max_levels = 1;
 		double   sai_threshold = 0.1;
 		double   sai_filter = 0.05;
@@ -708,6 +697,74 @@ int main (int argc, char *argv[])
       /* Destory solver and preconditioner */
       HYPRE_ParCSRFlexGMRESDestroy(solver);
       HYPRE_BoomerAMGDestroy(precond);
+
+   }
+   else if (solver_id == 62)
+   {
+      time_index = hypre_InitializeTiming("FlexGMRES - ParaSails Setup");
+      hypre_BeginTiming(time_index);
+
+      int      sai_max_levels = 1;
+      double   sai_threshold = 0.1;
+      double   sai_filter = 0.05;
+      int      sai_sym = 1;
+      int    restart = 30;
+
+      /* Create solver */
+      HYPRE_ParCSRFlexGMRESCreate(MPI_COMM_WORLD, &solver);
+
+      /* Set some parameters (See Reference Manual for more parameters) */
+      HYPRE_FlexGMRESSetKDim(solver, restart);
+      HYPRE_FlexGMRESSetMaxIter(solver, max_iter); /* max iterations */
+      HYPRE_FlexGMRESSetTol(solver, 1e-7); /* conv. tolerance */
+      HYPRE_FlexGMRESSetPrintLevel(solver, 2); /* print solve info */
+      HYPRE_FlexGMRESSetLogging(solver, 1); /* needed to get run info later */
+
+
+      /* Now set up the ParaSails preconditioner and specify any parameters */
+      HYPRE_ParaSailsCreate(MPI_COMM_WORLD, &precond);
+
+      /* Set some parameters (See Reference Manual for more parameters) */
+      HYPRE_ParaSailsSetParams(precond, sai_threshold, sai_max_levels);
+      HYPRE_ParaSailsSetFilter(precond, sai_filter);
+      HYPRE_ParaSailsSetSym(precond, sai_sym);
+      HYPRE_ParaSailsSetLogging(precond, 3);
+
+      /* Set the PCG preconditioner */
+      HYPRE_PCGSetPrecond(solver, (HYPRE_PtrToSolverFcn) HYPRE_ParaSailsSolve,
+                          (HYPRE_PtrToSolverFcn) HYPRE_ParaSailsSetup, precond);
+
+      /* Now setup and solve! */
+      HYPRE_ParCSRFlexGMRESSetup(solver, parcsr_A, par_b, par_x);
+
+      hypre_EndTiming(time_index);
+      hypre_PrintTiming("Setup phase times", MPI_COMM_WORLD);
+      hypre_FinalizeTiming(time_index);
+      hypre_ClearTiming();
+      time_index = hypre_InitializeTiming("FlexGMRES - ParaSails Solve");
+      hypre_BeginTiming(time_index);
+
+      HYPRE_ParCSRFlexGMRESSolve(solver, parcsr_A, par_b, par_x);
+
+      hypre_EndTiming(time_index);
+      hypre_PrintTiming("Solve phase times", MPI_COMM_WORLD);
+      hypre_FinalizeTiming(time_index);
+      hypre_ClearTiming();
+
+      /* Run info - needed logging turned on */
+      HYPRE_FlexGMRESGetNumIterations(solver, &num_iterations);
+      HYPRE_FlexGMRESGetFinalRelativeResidualNorm(solver, &final_res_norm);
+      if (myid == 0)
+      {
+         printf("\n");
+         printf("Iterations = %d\n", num_iterations);
+         printf("Final Relative Residual Norm = %e\n", final_res_norm);
+         printf("\n");
+      }
+
+      /* Destory solver and preconditioner */
+      HYPRE_ParCSRFlexGMRESDestroy(solver);
+      HYPRE_ParaSailsDestroy(precond);
 
    }
    else
