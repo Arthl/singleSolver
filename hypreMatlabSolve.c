@@ -25,15 +25,21 @@ int main (int argc, char *argv[])
 {
    clock_t begin = clock();
    int time_index;
+   time_index = hypre_InitializeTiming("Setup matrix and vectors");
+   hypre_BeginTiming(time_index);
 
    HYPRE_Int i;
    HYPRE_Int iErr = 0;
+
+   int num_iterations;
+   double final_res_norm;
+   int max_iter = 5000;
 
     
    HYPRE_Int myid, num_procs, dummy;
    HYPRE_Int solver_id;
     
-   HYPRE_Int first_local_row, last_local_row, local_num_rows;
+   HYPRE_Int first_local_row, last_local_row;
    HYPRE_Int first_local_col, last_local_col, local_num_cols;
     
    HYPRE_Real *values;
@@ -78,7 +84,6 @@ int main (int argc, char *argv[])
       <filename>  = IJ.A.out to read in what has been printed out (processor numbers are omitted). */
       iErr = HYPRE_IJMatrixRead( "matrixK", MPI_COMM_WORLD, HYPRE_PARCSR, &ij_A );
 
-
     if (iErr) 
     {
         hypre_printf("ERROR: Problem reading in the system matrix!\n");
@@ -89,7 +94,6 @@ int main (int argc, char *argv[])
                                        &first_local_row, &last_local_row ,
                                        &first_local_col, &last_local_col );
     
-    local_num_rows = last_local_row - first_local_row + 1;
     local_num_cols = last_local_col - first_local_col + 1;
    /* Get the parcsr matrix object to use */
    iErr += HYPRE_IJMatrixGetObject( ij_A, &object);
@@ -120,14 +124,18 @@ int main (int argc, char *argv[])
    iErr = HYPRE_IJVectorGetObject( ij_x, &object );
    par_x = (HYPRE_ParVector) object;
 
+   hypre_EndTiming(time_index);
+   hypre_PrintTiming("Time to initiate matrix and vector", MPI_COMM_WORLD);
+   hypre_FinalizeTiming(time_index);
+   hypre_ClearTiming();
 
-   /* Choose a solver and solve the system */
 
+   // // // /* Choose a solver and solve the system */ // // //
    /* AMG */
    if (solver_id == 0)
    {
-      int num_iterations;
-      double final_res_norm;
+      time_index = hypre_InitializeTiming("AMG Setup");
+      hypre_BeginTiming(time_index);
 
       /* Create solver */
       HYPRE_BoomerAMGCreate(&solver);
@@ -141,16 +149,22 @@ int main (int argc, char *argv[])
       HYPRE_BoomerAMGSetMaxLevels(solver, 20);  /* maximum number of levels */
       HYPRE_BoomerAMGSetTol(solver, 1e-7);      /* conv. tolerance */
 
-      time_index = hypre_InitializeTiming("AMG Setup and Solve");
-      hypre_BeginTiming(time_index);
       /* Now setup and solve! */
       HYPRE_BoomerAMGSetup(solver, parcsr_A, par_b, par_x);
+
+      hypre_EndTiming(time_index);
+      hypre_PrintTiming("Solve phase times", MPI_COMM_WORLD);
+      hypre_FinalizeTiming(time_index);
+      hypre_ClearTiming();
+      time_index = hypre_InitializeTiming("AMG Solve");
+      hypre_BeginTiming(time_index);
+
       HYPRE_BoomerAMGSolve(solver, parcsr_A, par_b, par_x);
 
-       hypre_EndTiming(time_index);
-       hypre_PrintTiming("Solve phase times", MPI_COMM_WORLD);
-       hypre_FinalizeTiming(time_index);
-       hypre_ClearTiming();
+      hypre_EndTiming(time_index);
+      hypre_PrintTiming("Solve phase times", MPI_COMM_WORLD);
+      hypre_FinalizeTiming(time_index);
+      hypre_ClearTiming();
 
       /* Run info - needed logging turned on */
       HYPRE_BoomerAMGGetNumIterations(solver, &num_iterations);
@@ -169,29 +183,35 @@ int main (int argc, char *argv[])
    /* PCG */
    else if (solver_id == 50)
    {
-      int num_iterations;
-      double final_res_norm;
+      time_index = hypre_InitializeTiming("PCG Setup");
+      hypre_BeginTiming(time_index);
 
       /* Create solver */
       HYPRE_ParCSRPCGCreate(MPI_COMM_WORLD, &solver);
 
       /* Set some parameters (See Reference Manual for more parameters) */
-      HYPRE_PCGSetMaxIter(solver, 1000); /* max iterations */
+      HYPRE_PCGSetMaxIter(solver, max_iter); /* max iterations */
       HYPRE_PCGSetTol(solver, 1e-7); /* conv. tolerance */
       HYPRE_PCGSetTwoNorm(solver, 1); /* use the two norm as the stopping criteria */
       HYPRE_PCGSetPrintLevel(solver, 2); /* prints out the iteration info */
       HYPRE_PCGSetLogging(solver, 1); /* needed to get run info later */
 
-      time_index = hypre_InitializeTiming("PCG Setup and Solve");
-      hypre_BeginTiming(time_index);
       /* Now setup and solve! */
       HYPRE_ParCSRPCGSetup(solver, parcsr_A, par_b, par_x);
+
+      hypre_EndTiming(time_index);
+      hypre_PrintTiming("Solve phase times", MPI_COMM_WORLD);
+      hypre_FinalizeTiming(time_index);
+      hypre_ClearTiming();
+      time_index = hypre_InitializeTiming("PCG Solve");
+      hypre_BeginTiming(time_index);
+
       HYPRE_ParCSRPCGSolve(solver, parcsr_A, par_b, par_x);
 
-       hypre_EndTiming(time_index);
-       hypre_PrintTiming("Solve phase times", MPI_COMM_WORLD);
-       hypre_FinalizeTiming(time_index);
-       hypre_ClearTiming();
+      hypre_EndTiming(time_index);
+      hypre_PrintTiming("Solve phase times", MPI_COMM_WORLD);
+      hypre_FinalizeTiming(time_index);
+      hypre_ClearTiming();
 
       /* Run info - needed logging turned on */
       HYPRE_PCGGetNumIterations(solver, &num_iterations);
@@ -210,21 +230,19 @@ int main (int argc, char *argv[])
    /* PCG with AMG preconditioner */
    else if (solver_id == 1)
    {
-      int num_iterations;
-      double final_res_norm;
+      time_index = hypre_InitializeTiming("PCG - BoomerAMG Setup");
+      hypre_BeginTiming(time_index);
 
       /* Create solver */
       HYPRE_ParCSRPCGCreate(MPI_COMM_WORLD, &solver);
 
       /* Set some parameters (See Reference Manual for more parameters) */
-      HYPRE_PCGSetMaxIter(solver, 1000); /* max iterations */
+      HYPRE_PCGSetMaxIter(solver, max_iter); /* max iterations */
       HYPRE_PCGSetTol(solver, 1e-7); /* conv. tolerance */
       HYPRE_PCGSetTwoNorm(solver, 1); /* use the two norm as the stopping criteria */
       HYPRE_PCGSetPrintLevel(solver, 2); /* print solve info */
       HYPRE_PCGSetLogging(solver, 1); /* needed to get run info later */
 
-      time_index = hypre_InitializeTiming("BoomerAMG Setup");
-      hypre_BeginTiming(time_index);
       /* Now set up the AMG preconditioner and specify any parameters */
       HYPRE_BoomerAMGCreate(&precond);
       HYPRE_BoomerAMGSetPrintLevel(precond, 1); /* print amg solution info */
@@ -239,22 +257,22 @@ int main (int argc, char *argv[])
       HYPRE_PCGSetPrecond(solver, (HYPRE_PtrToSolverFcn) HYPRE_BoomerAMGSolve,
                           (HYPRE_PtrToSolverFcn) HYPRE_BoomerAMGSetup, precond);
 
-	hypre_EndTiming(time_index);
-	hypre_PrintTiming("Setup phase times", MPI_COMM_WORLD);
-	hypre_FinalizeTiming(time_index);
-        hypre_ClearTiming();
-
-        time_index = hypre_InitializeTiming("PCG Solve");
-        hypre_BeginTiming(time_index);
-
       /* Now setup and solve! */
       HYPRE_ParCSRPCGSetup(solver, parcsr_A, par_b, par_x);
+
+      hypre_EndTiming(time_index);
+      hypre_PrintTiming("Setup-precond phase times", MPI_COMM_WORLD);
+      hypre_FinalizeTiming(time_index);
+      hypre_ClearTiming();
+      time_index = hypre_InitializeTiming("PCG - BoomerAMG Solve");
+      hypre_BeginTiming(time_index);
+
       HYPRE_ParCSRPCGSolve(solver, parcsr_A, par_b, par_x);
 
-       hypre_EndTiming(time_index);
-       hypre_PrintTiming("Solve phase times", MPI_COMM_WORLD);
-       hypre_FinalizeTiming(time_index);
-       hypre_ClearTiming();
+      hypre_EndTiming(time_index);
+      hypre_PrintTiming("Solve phase times", MPI_COMM_WORLD);
+      hypre_FinalizeTiming(time_index);
+      hypre_ClearTiming();
 
       /* Run info - needed logging turned on */
       HYPRE_PCGGetNumIterations(solver, &num_iterations);
@@ -274,8 +292,8 @@ int main (int argc, char *argv[])
    /* PCG with Parasails Preconditioner */
    else if (solver_id == 8)
    {
-      int    num_iterations;
-      double final_res_norm;
+      time_index = hypre_InitializeTiming("PCG - ParaSails Setup");
+      hypre_BeginTiming(time_index);
 
       int      sai_max_levels = 1;
       double   sai_threshold = 0.1;
@@ -286,14 +304,13 @@ int main (int argc, char *argv[])
       HYPRE_ParCSRPCGCreate(MPI_COMM_WORLD, &solver);
 
       /* Set some parameters (See Reference Manual for more parameters) */
-      HYPRE_PCGSetMaxIter(solver, 1000); /* max iterations */
+      HYPRE_PCGSetMaxIter(solver, max_iter); /* max iterations */
       HYPRE_PCGSetTol(solver, 1e-7); /* conv. tolerance */
       HYPRE_PCGSetTwoNorm(solver, 1); /* use the two norm as the stopping criteria */
       HYPRE_PCGSetPrintLevel(solver, 2); /* print solve info */
       HYPRE_PCGSetLogging(solver, 1); /* needed to get run info later */
 
-      time_index = hypre_InitializeTiming("ParaSails Setup");
-      hypre_BeginTiming(time_index);
+
       /* Now set up the ParaSails preconditioner and specify any parameters */
       HYPRE_ParaSailsCreate(MPI_COMM_WORLD, &precond);
 
@@ -307,23 +324,22 @@ int main (int argc, char *argv[])
       HYPRE_PCGSetPrecond(solver, (HYPRE_PtrToSolverFcn) HYPRE_ParaSailsSolve,
                           (HYPRE_PtrToSolverFcn) HYPRE_ParaSailsSetup, precond);
 
-	hypre_EndTiming(time_index);
-	hypre_PrintTiming("Setup phase times", MPI_COMM_WORLD);
-	hypre_FinalizeTiming(time_index);
-        hypre_ClearTiming();
-
-        time_index = hypre_InitializeTiming("PCG Solve");
-        hypre_BeginTiming(time_index);
-
       /* Now setup and solve! */
       HYPRE_ParCSRPCGSetup(solver, parcsr_A, par_b, par_x);
+
+      hypre_EndTiming(time_index);
+      hypre_PrintTiming("Setup phase times", MPI_COMM_WORLD);
+      hypre_FinalizeTiming(time_index);
+      hypre_ClearTiming();
+      time_index = hypre_InitializeTiming("PCG - ParaSails Solve");
+      hypre_BeginTiming(time_index);
+
       HYPRE_ParCSRPCGSolve(solver, parcsr_A, par_b, par_x);
 
-       hypre_EndTiming(time_index);
-       hypre_PrintTiming("Solve phase times", MPI_COMM_WORLD);
-       hypre_FinalizeTiming(time_index);
-       hypre_ClearTiming();
-
+      hypre_EndTiming(time_index);
+      hypre_PrintTiming("Solve phase times", MPI_COMM_WORLD);
+      hypre_FinalizeTiming(time_index);
+      hypre_ClearTiming();
 
       /* Run info - needed logging turned on */
       HYPRE_PCGGetNumIterations(solver, &num_iterations);
@@ -343,21 +359,20 @@ int main (int argc, char *argv[])
 /* PCG with Euclid Preconditioner */
    else if (solver_id == 10)
    {
-      int    num_iterations;
-      double final_res_norm;
+
+      time_index = hypre_InitializeTiming("PCG - Euclid Setup");
+      hypre_BeginTiming(time_index);
 
       /* Create solver */
       HYPRE_ParCSRPCGCreate(MPI_COMM_WORLD, &solver);
 
       /* Set some parameters (See Reference Manual for more parameters) */
-      HYPRE_PCGSetMaxIter(solver, 1000); /* max iterations */
+      HYPRE_PCGSetMaxIter(solver, max_iter); /* max iterations */
       HYPRE_PCGSetTol(solver, 1e-7); /* conv. tolerance */
       HYPRE_PCGSetTwoNorm(solver, 1); /* use the two norm as the stopping criteria */
       HYPRE_PCGSetPrintLevel(solver, 2); /* print solve info */
       HYPRE_PCGSetLogging(solver, 1); /* needed to get run info later */
 
-      time_index = hypre_InitializeTiming("Euclid Setup");
-      hypre_BeginTiming(time_index);
       /* Now set up the MLI preconditioner and specify any parameters */
 	HYPRE_EuclidCreate(MPI_COMM_WORLD, &precond);
 
@@ -378,15 +393,18 @@ int main (int argc, char *argv[])
       //HYPRE_PCGSetPrecond(solver, (HYPRE_PtrToSolverFcn) HYPRE_ParaSailsSolve,
       //                    (HYPRE_PtrToSolverFcn) HYPRE_ParaSailsSetup, precond);
 
+
+      /* Now setup and solve! */
+      HYPRE_ParCSRPCGSetup(solver, parcsr_A, par_b, par_x);
+
 	hypre_EndTiming(time_index);
 	hypre_PrintTiming("Setup phase times", MPI_COMM_WORLD);
 	hypre_FinalizeTiming(time_index);
         hypre_ClearTiming();
 
-        time_index = hypre_InitializeTiming("PCG Solve");
+        time_index = hypre_InitializeTiming("PCG - Euclid Solve");
         hypre_BeginTiming(time_index);
-      /* Now setup and solve! */
-      HYPRE_ParCSRPCGSetup(solver, parcsr_A, par_b, par_x);
+
       HYPRE_ParCSRPCGSolve(solver, parcsr_A, par_b, par_x);
 
        hypre_EndTiming(time_index);
@@ -417,13 +435,10 @@ int main (int argc, char *argv[])
       time_index = hypre_InitializeTiming("GMRES Setup");
       hypre_BeginTiming(time_index);
 
-      int    num_iterations;
-      double final_res_norm;
-
       HYPRE_ParCSRGMRESCreate(MPI_COMM_WORLD, &solver);
 
       /* Set some parameters (See Reference Manual for more parameters) */
-      HYPRE_GMRESSetMaxIter(solver, 1000); /* max iterations */
+      HYPRE_GMRESSetMaxIter(solver, max_iter); /* max iterations */
       HYPRE_GMRESSetKDim(solver, 30);
       HYPRE_GMRESSetTol(solver, 1e-7); /* conv. tolerance */
       HYPRE_GMRESSetPrintLevel(solver, 2); /* print solve info */
@@ -464,17 +479,14 @@ int main (int argc, char *argv[])
    }
    else if ((solver_id > 55) && (solver_id < 59))
    {
-      time_index = hypre_InitializeTiming("GMRES Setup");
+      time_index = hypre_InitializeTiming("GMRES - Precond Setup");
       hypre_BeginTiming(time_index);
-
-      int    num_iterations;
-      double final_res_norm;
 
       /* Create solver */
       HYPRE_ParCSRGMRESCreate(MPI_COMM_WORLD, &solver);
 
       /* Set some parameters (See Reference Manual for more parameters) */
-      HYPRE_GMRESSetMaxIter(solver, 1000); /* max iterations */
+      HYPRE_GMRESSetMaxIter(solver, max_iter); /* max iterations */
       HYPRE_GMRESSetKDim(solver, 30);
       HYPRE_GMRESSetTol(solver, 1e-7); /* conv. tolerance */
       HYPRE_GMRESSetPrintLevel(solver, 2); /* print solve info */
@@ -482,49 +494,47 @@ int main (int argc, char *argv[])
 
 	if (solver_id == 56)
 	{
-	// AMG Precond
-	      /* Now set up the AMG preconditioner and specify any parameters */
-	      printf("AMG Preconditioner\n");
-	      HYPRE_BoomerAMGCreate(&precond);
-	      HYPRE_BoomerAMGSetPrintLevel(precond, 1); /* print amg solution info */
-	      HYPRE_BoomerAMGSetCoarsenType(precond, 6);
-	      HYPRE_BoomerAMGSetOldDefault(precond); 
-	      HYPRE_BoomerAMGSetRelaxType(precond, 6); /* Sym G.S./Jacobi hybrid */
-	      HYPRE_BoomerAMGSetNumSweeps(precond, 1);
-	      HYPRE_BoomerAMGSetTol(precond, 0.0); /* conv. tolerance zero */
-	      HYPRE_BoomerAMGSetMaxIter(precond, 1); /* do only one iteration! */
+		// AMG Precond
+		printf("AMG Preconditioner\n");
+		HYPRE_BoomerAMGCreate(&precond);
+		HYPRE_BoomerAMGSetPrintLevel(precond, 1); /* print amg solution info */
+		HYPRE_BoomerAMGSetCoarsenType(precond, 6);
+		HYPRE_BoomerAMGSetOldDefault(precond); 
+		HYPRE_BoomerAMGSetRelaxType(precond, 6); /* Sym G.S./Jacobi hybrid */
+		HYPRE_BoomerAMGSetNumSweeps(precond, 1);
+		HYPRE_BoomerAMGSetTol(precond, 0.0); /* conv. tolerance zero */
+		HYPRE_BoomerAMGSetMaxIter(precond, 1); /* do only one iteration! */
 
-	      /* Set the PCG preconditioner */
-	      HYPRE_GMRESSetPrecond(solver, (HYPRE_PtrToSolverFcn) HYPRE_BoomerAMGSolve,
-			          (HYPRE_PtrToSolverFcn) HYPRE_BoomerAMGSetup, precond);
+		/* Set the PCG preconditioner */
+		HYPRE_GMRESSetPrecond(solver, (HYPRE_PtrToSolverFcn) HYPRE_BoomerAMGSolve,
+				  (HYPRE_PtrToSolverFcn) HYPRE_BoomerAMGSetup, precond);
 
 	}
 	else if (solver_id == 57)
 	{
-	// ParaSails Precond
-	      int      sai_max_levels = 1;
-	      double   sai_threshold = 0.1;
-	      double   sai_filter = 0.05;
-	      int      sai_sym = 1;
-	      printf("ParaSail Preconditioner\n");
+		// ParaSails Precond
+		printf("ParaSail Preconditioner\n");
+		int      sai_max_levels = 1;
+		double   sai_threshold = 0.1;
+		double   sai_filter = 0.05;
+		int      sai_sym = 1;
 
-	      HYPRE_ParaSailsCreate(MPI_COMM_WORLD, &precond);
+		HYPRE_ParaSailsCreate(MPI_COMM_WORLD, &precond);
 
-	      /* Set some parameters (See Reference Manual for more parameters) */
-	      HYPRE_ParaSailsSetParams(precond, sai_threshold, sai_max_levels);
-	      HYPRE_ParaSailsSetFilter(precond, sai_filter);
-	      HYPRE_ParaSailsSetSym(precond, sai_sym);
-	      HYPRE_ParaSailsSetLogging(precond, 3);
+		/* Set some parameters (See Reference Manual for more parameters) */
+		HYPRE_ParaSailsSetParams(precond, sai_threshold, sai_max_levels);
+		HYPRE_ParaSailsSetFilter(precond, sai_filter);
+		HYPRE_ParaSailsSetSym(precond, sai_sym);
+		HYPRE_ParaSailsSetLogging(precond, 3);
 
-	      /* Set the PCG preconditioner */
-	      HYPRE_GMRESSetPrecond(solver, (HYPRE_PtrToSolverFcn) HYPRE_ParaSailsSolve,
-		                  (HYPRE_PtrToSolverFcn) HYPRE_ParaSailsSetup, precond);
+		/* Set the PCG preconditioner */
+		HYPRE_GMRESSetPrecond(solver, (HYPRE_PtrToSolverFcn) HYPRE_ParaSailsSolve,
+				  (HYPRE_PtrToSolverFcn) HYPRE_ParaSailsSetup, precond);
 
 	}
 	else if (solver_id == 58)
 	{
-	// Euclid Precond
-	        printf("Euclid Preconditioner\n");
+		// Euclid Precond
 		HYPRE_EuclidCreate(MPI_COMM_WORLD, &precond);
 
 		HYPRE_EuclidSetLevel(precond, 1);
@@ -536,13 +546,13 @@ int main (int argc, char *argv[])
 	}
 
       HYPRE_ParCSRGMRESSetup(solver, parcsr_A, par_b, par_x);
+
       hypre_EndTiming(time_index);
       hypre_PrintTiming("Setup phase times", MPI_COMM_WORLD);
       hypre_FinalizeTiming(time_index);
       hypre_ClearTiming();
-
-	time_index = hypre_InitializeTiming("GMRES Solve");
-        hypre_BeginTiming(time_index);
+      time_index = hypre_InitializeTiming("GMRES - Precond Solve");
+      hypre_BeginTiming(time_index);
 
       /* Now setup and solve! */
       HYPRE_ParCSRGMRESSolve(solver, parcsr_A, par_b, par_x);
@@ -584,17 +594,17 @@ int main (int argc, char *argv[])
    /* Flexible GMRES */
    else if (solver_id == 60)
    {
-      int    num_iterations;
-      double final_res_norm;
-      int    restart = 30;
+      time_index = hypre_InitializeTiming("FlexGMRES Setup");
+      hypre_BeginTiming(time_index);
 
+      int    restart = 30;
 
       /* Create solver */
       HYPRE_ParCSRFlexGMRESCreate(MPI_COMM_WORLD, &solver);
 
       /* Set some parameters (See Reference Manual for more parameters) */
       HYPRE_FlexGMRESSetKDim(solver, restart);
-      HYPRE_FlexGMRESSetMaxIter(solver, 1000); /* max iterations */
+      HYPRE_FlexGMRESSetMaxIter(solver, max_iter); /* max iterations */
       HYPRE_FlexGMRESSetTol(solver, 1e-7); /* conv. tolerance */
       HYPRE_FlexGMRESSetPrintLevel(solver, 2); /* print solve info */
       HYPRE_FlexGMRESSetLogging(solver, 1); /* needed to get run info later */
@@ -602,7 +612,20 @@ int main (int argc, char *argv[])
 
       /* Now setup and solve! */
       HYPRE_ParCSRFlexGMRESSetup(solver, parcsr_A, par_b, par_x);
+
+      hypre_EndTiming(time_index);
+      hypre_PrintTiming("Setup phase times", MPI_COMM_WORLD);
+      hypre_FinalizeTiming(time_index);
+      hypre_ClearTiming();
+      time_index = hypre_InitializeTiming("FlexGMRES Solve");
+      hypre_BeginTiming(time_index);
+
       HYPRE_ParCSRFlexGMRESSolve(solver, parcsr_A, par_b, par_x);
+
+      hypre_EndTiming(time_index);
+      hypre_PrintTiming("Solve phase times", MPI_COMM_WORLD);
+      hypre_FinalizeTiming(time_index);
+      hypre_ClearTiming();
 
       /* Run info - needed logging turned on */
       HYPRE_FlexGMRESGetNumIterations(solver, &num_iterations);
@@ -622,17 +645,17 @@ int main (int argc, char *argv[])
    /* Flexible GMRES with  AMG Preconditioner */
    else if (solver_id == 61)
    {
-      int    num_iterations;
-      double final_res_norm;
-      int    restart = 30;
+      time_index = hypre_InitializeTiming("FlexGMRES - BoomerAMG Setup");
+      hypre_BeginTiming(time_index);
 
+      int    restart = 30;
 
       /* Create solver */
       HYPRE_ParCSRFlexGMRESCreate(MPI_COMM_WORLD, &solver);
 
       /* Set some parameters (See Reference Manual for more parameters) */
       HYPRE_FlexGMRESSetKDim(solver, restart);
-      HYPRE_FlexGMRESSetMaxIter(solver, 1000); /* max iterations */
+      HYPRE_FlexGMRESSetMaxIter(solver, max_iter); /* max iterations */
       HYPRE_FlexGMRESSetTol(solver, 1e-7); /* conv. tolerance */
       HYPRE_FlexGMRESSetPrintLevel(solver, 2); /* print solve info */
       HYPRE_FlexGMRESSetLogging(solver, 1); /* needed to get run info later */
@@ -656,7 +679,20 @@ int main (int argc, char *argv[])
 
       /* Now setup and solve! */
       HYPRE_ParCSRFlexGMRESSetup(solver, parcsr_A, par_b, par_x);
+
+      hypre_EndTiming(time_index);
+      hypre_PrintTiming("Setup phase times", MPI_COMM_WORLD);
+      hypre_FinalizeTiming(time_index);
+      hypre_ClearTiming();
+      time_index = hypre_InitializeTiming("FlexGMRES - BoomerAMG Solve");
+      hypre_BeginTiming(time_index);
+
       HYPRE_ParCSRFlexGMRESSolve(solver, parcsr_A, par_b, par_x);
+
+      hypre_EndTiming(time_index);
+      hypre_PrintTiming("Solve phase times", MPI_COMM_WORLD);
+      hypre_FinalizeTiming(time_index);
+      hypre_ClearTiming();
 
       /* Run info - needed logging turned on */
       HYPRE_FlexGMRESGetNumIterations(solver, &num_iterations);
